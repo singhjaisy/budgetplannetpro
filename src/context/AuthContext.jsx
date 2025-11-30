@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
+import { signup as firebaseSignup, login as firebaseLogin, logout as firebaseLogout, onAuthStateChange } from '../firebase/auth'
 
 const AuthContext = createContext(null)
 
@@ -6,69 +7,52 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // Load user from localStorage on mount
+  // Listen to Firebase auth state changes
   useEffect(() => {
-    const savedUser = localStorage.getItem('currentUser')
-    if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser))
-    }
-    setLoading(false)
+    const unsubscribe = onAuthStateChange((user) => {
+      setCurrentUser(user)
+      setLoading(false)
+    })
+
+    return () => unsubscribe()
   }, [])
 
   // Sign up new user
-  const signup = (email, password, name) => {
-    // Get existing users
-    const users = JSON.parse(localStorage.getItem('users') || '[]')
-    
-    // Check if user already exists
-    if (users.find(u => u.email === email)) {
-      throw new Error('User with this email already exists')
+  const signup = async (email, password, name) => {
+    try {
+      const user = await firebaseSignup(email, password, name)
+      return user
+    } catch (error) {
+      // Convert Firebase errors to user-friendly messages
+      if (error.message.includes('email-already-in-use')) {
+        throw new Error('User with this email already exists')
+      }
+      throw error
     }
-
-    // Create new user
-    const newUser = {
-      id: Date.now().toString(),
-      email,
-      name,
-      createdAt: new Date().toISOString()
-    }
-
-    // Store user (in a real app, password would be hashed)
-    users.push({
-      ...newUser,
-      password // In production, this should be hashed!
-    })
-
-    localStorage.setItem('users', JSON.stringify(users))
-    
-    // Set as current user
-    setCurrentUser(newUser)
-    localStorage.setItem('currentUser', JSON.stringify(newUser))
-    
-    return newUser
   }
 
   // Login user
-  const login = (email, password) => {
-    const users = JSON.parse(localStorage.getItem('users') || '[]')
-    const user = users.find(u => u.email === email && u.password === password)
-
-    if (!user) {
-      throw new Error('Invalid email or password')
+  const login = async (email, password) => {
+    try {
+      const user = await firebaseLogin(email, password)
+      return user
+    } catch (error) {
+      // Convert Firebase errors to user-friendly messages
+      if (error.message.includes('user-not-found') || error.message.includes('wrong-password')) {
+        throw new Error('Invalid email or password')
+      }
+      throw error
     }
-
-    // Remove password before setting current user
-    const { password: _, ...userWithoutPassword } = user
-    setCurrentUser(userWithoutPassword)
-    localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword))
-    
-    return userWithoutPassword
   }
 
   // Logout user
-  const logout = () => {
-    setCurrentUser(null)
-    localStorage.removeItem('currentUser')
+  const logout = async () => {
+    try {
+      await firebaseLogout()
+    } catch (error) {
+      console.error('Logout error:', error)
+      throw error
+    }
   }
 
   const value = {
@@ -89,4 +73,3 @@ export function useAuth() {
   }
   return context
 }
-

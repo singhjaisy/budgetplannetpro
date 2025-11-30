@@ -4,6 +4,12 @@ import './App.css'
 import { useAuth } from './context/AuthContext'
 import { FaWallet, FaSignOutAlt } from 'react-icons/fa'
 import { HiHand } from 'react-icons/hi'
+import { 
+  subscribeToBudgetItems, 
+  addBudgetItem as firebaseAddItem, 
+  deleteBudgetItem as firebaseDeleteItem,
+  importBudgetItems as firebaseImportItems
+} from './firebase/budgetItems'
 import BudgetSummary from './components/BudgetSummary'
 import BudgetForm from './components/BudgetForm'
 import BudgetList from './components/BudgetList'
@@ -17,42 +23,54 @@ function App() {
   const [items, setItems] = useState([])
   const [showSignup, setShowSignup] = useState(false)
 
-  // Load user-specific items from localStorage
+  // Subscribe to budget items from Firebase (real-time updates)
   useEffect(() => {
     if (currentUser) {
-      const savedItems = localStorage.getItem(`budgetItems_${currentUser.id}`)
-      if (savedItems) {
-        setItems(JSON.parse(savedItems))
-      } else {
-        setItems([])
-      }
+      const unsubscribe = subscribeToBudgetItems(currentUser.id, (items) => {
+        setItems(items)
+      })
+
+      // Cleanup subscription on unmount or user change
+      return () => unsubscribe()
     } else {
       setItems([])
     }
   }, [currentUser])
 
-  // Save user-specific items to localStorage
-  useEffect(() => {
-    if (currentUser && items.length >= 0) {
-      localStorage.setItem(`budgetItems_${currentUser.id}`, JSON.stringify(items))
+  const addItem = async (item) => {
+    if (!currentUser) return
+    
+    try {
+      await firebaseAddItem(currentUser.id, item)
+      // Items will update automatically via subscription
+    } catch (error) {
+      console.error('Error adding item:', error)
+      alert('Failed to add item. Please try again.')
     }
-  }, [items, currentUser])
-
-  const addItem = (item) => {
-    const newItem = {
-      id: Date.now().toString(),
-      ...item,
-      date: new Date().toISOString()
-    }
-    setItems([...items, newItem])
   }
 
-  const deleteItem = (id) => {
-    setItems(items.filter(item => item.id !== id))
+  const deleteItem = async (id) => {
+    if (!currentUser) return
+    
+    try {
+      await firebaseDeleteItem(currentUser.id, id)
+      // Items will update automatically via subscription
+    } catch (error) {
+      console.error('Error deleting item:', error)
+      alert('Failed to delete item. Please try again.')
+    }
   }
 
-  const importItems = (importedItems) => {
-    setItems(importedItems)
+  const importItems = async (importedItems) => {
+    if (!currentUser) return
+    
+    try {
+      await firebaseImportItems(currentUser.id, importedItems)
+      // Items will update automatically via subscription
+    } catch (error) {
+      console.error('Error importing items:', error)
+      alert('Failed to import items. Please try again.')
+    }
   }
 
   const income = items
